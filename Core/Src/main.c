@@ -9,10 +9,10 @@
   * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
   * All rights reserved.</center></h2>
   *
-  * This software component is licensed by ST under Ultimate Liberty license
-  * SLA0044, the "License"; You may not use this file except in compliance with
-  * the License. You may obtain a copy of the License at:
-  *                             www.st.com/SLA0044
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
   *
   ******************************************************************************
   */
@@ -22,6 +22,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "math.h"
+#include "stdlib.h"
+#include "stdio.h"
 #include "string.h"
 #include "MPU_9255.h"
 /* USER CODE END Includes */
@@ -29,7 +32,7 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 typedef enum {ALL, OnSol, OnSag, OrtaSol, OrtaSag, ArkaSol, ArkaSag}motorlar;
-typedef enum{ileri, geri, dur}yonler;
+typedef enum {ileri, geri, dur}yonler;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -53,32 +56,67 @@ DMA_HandleTypeDef hdma_uart7_rx;
 
 /* USER CODE BEGIN PV */
 MPU_DataStruct MPU_Degerler;
-uint8_t durum = 0, komut2_int = 0, IMU_ALL_FLAG = 0 , IMU_ACC_FLAG = 0, IMU_GYRO_FLAG = 0 , IMU_ANGLE_FLAG=0 , OK_FLAG = 0;
-;
-char gelenData[10], komut1[]="   ", komut2[]="   ", *token;
-char komut_ILERI[] = "ILR\0", komut_GERI[] = "GRI\0", komut_DUR[] = "DUR\0", komut_DON[] = "DON\0", komut_SAG[] = "SAG\0",komut_SOL[] = "SOL\0",
-komut_DEMO[] = "DEMO\0", komut_IMU[] = "IMU\0", komut_IMU_ALL[] = "ALL\0",  komut_IMU_GYRO[] = "GYR\0",  komut_IMU_ACC[] = "ACC\0",  komut_IMU_ANG[] = "ANG\0",
-komut_TIM8_Period[] = "PER\0" , komut_OK[] = "OK\0\0" , komut_STOP[]= "STP\0" , komut_OnSol[] = "FLL\0" , komut_OrtaSag[] = "MRR\0",
-komut_OnSag[] = "FRR\0", komut_OrtaSol[] = "MLL\0" , komut_ArkaSol[] = "BLL\0", komut_ArkaSag[] = "BRR\0";
+
+uint8_t komut2_int = 0, IMU_ALL_FLAG = 0 , IMU_ACC_FLAG = 0, IMU_GYRO_FLAG = 0 , IMU_ANGLE_FLAG=0 , OK_FLAG = 0, DEMO_FLAG =0;
+uint8_t ERROR_COUNT = 0;
+char gelenData[10], defaultData[10], komut1[5], komut2[3], *token;
+
+char 	komut_ILERI[] =       "ILR\0",
+		komut_GERI[] =        "GRI\0",
+		komut_DUR[] =         "DUR\0",
+		komut_DON[] =         "DON\0",
+		komut_SAG[] =         "SAG\0",
+		komut_SOL[] =         "SOL\0",
+		komut_RSAG[] =        "RSAG\0", //ROTATE SOL
+		komut_RSOL[] =        "RSOL\0", // ROTATE SAG
+		komut_ISAG[] =        "ISAG\0", //ILERI SAG
+		komut_ISOL[] =        "ISOL\0", // ILERI SOL
+		komut_GSAG[] =        "GSAG\0", // GERI SAG
+		komut_GSOL[] =        "GSOL\0", // GERI SOL
+		komut_DEMO[] =        "DEMO\0",
+		komut_IMU[] =         "IMU\0",
+		komut_IMU_ALL[] =     "ALL\0",
+		komut_IMU_GYRO[] =    "GYR\0",
+		komut_IMU_ACC[] =     "ACC\0",
+		komut_IMU_ANG[] =     "ANG\0",
+		komut_TIM8_Period[] = "PER\0" ,
+		komut_OK[] =          "OK\0\0" ,
+		komut_STOP[]=         "STP\0" ,
+		komut_OnSol[] =       "FLL\0" ,
+		komut_OrtaSag[] =     "MRR\0",
+		komut_OnSag[] =       "FRR\0",
+		komut_OrtaSol[] =     "MLL\0" ,
+		komut_ArkaSol[] =     "BLL\0",
+		komut_ArkaSag[] =     "BRR\0",
+		komut_RAPOR[] =       "RPR\0";
+
 char rpr[] = "rpr\0" , acc[] = "ACC\0";
-yonler DIREC_SAG=dur, DIREC_SOL=dur, DIREC=dur;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_TIM1_Init(void);
 static void MX_DMA_Init(void);
-static void MX_UART7_Init(void);
-static void MX_TIM3_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM1_Init(void);
+static void MX_TIM3_Init(void);
 static void MX_TIM8_Init(void);
+static void MX_UART7_Init(void);
 /* USER CODE BEGIN PFP */
+
 void motokontrol(motorlar motor_poz, yonler yon, uint8_t hiz);
+
 void ftoa(float n, char* res, int afterpoint);
+
 int intToStr(int x, char str[], int d);
+
 void reverse(char* str, int len);
+
 void XBEE_TransmitDouble(UART_HandleTypeDef *_UART, double deger); //  Double bir degiskeni _UART ile XBEE ye gonderir.
+
+void SRHEX_Init(); //MAIN INIT
+
+void DEMO(uint8_t tekrar);
 
 /* USER CODE END PFP */
 
@@ -91,149 +129,156 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   /* NOTE: This function Should not be modified, when the callback is needed,
            the HAL_GPIO_EXTI_Callback could be implemented in the user file
    */
-  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_14, GPIO_PIN_SET);
-  durum++;
+
+  DEMO_FLAG = 1;
 }
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-  /* Prevent unused argument(s) compilation warning */
-  UNUSED(huart);
-  /* NOTE: This function should not be modified, when the callback is needed,
-           the HAL_UART_RxCpltCallback could be implemented in the user file
-   */
-  token = strtok(gelenData, " ");
-  strcpy(komut1, token);
-  token = strtok(NULL, " ");
-  strcpy(komut2, token);
-  komut2_int = atoi(komut2);
-  //HAL_UART_Transmit(&huart7, (uint8_t *)"\n ", strlen("\n"), 100);
-
-  if(!strcmp(komut2, komut_ILERI)){
-	  DIREC = ileri;
-  }
-  if(!strcmp(komut2,komut_GERI)){
-	  DIREC = geri;
-  }
-  if(!strcmp(komut1,komut_OnSol)){
-	  motokontrol(OnSol, DIREC, 50);
-  }
-  if(!strcmp(komut1,komut_OnSag)){
-	  motokontrol(OnSag, DIREC, 50);
-  }
-  if(!strcmp(komut1,komut_OrtaSol)){
-	  motokontrol(OrtaSol, DIREC, 50);
-  }
-  if(!strcmp(komut1,komut_OrtaSag)){
-	  motokontrol(OrtaSag, DIREC, 50);
-  }
-  if(!strcmp(komut1,komut_ArkaSag)){
-	  motokontrol(ArkaSag, DIREC, 50);
-  }
-  if(!strcmp(komut1,komut_ArkaSol)){
-	  motokontrol(ArkaSol, DIREC, 50);
-  }
-
-  if(!strcmp(komut1,rpr)){
-	  HAL_UART_Transmit(&huart7, (uint8_t *)"RAPOR ALINDI \n", strlen("RAPOR ALINDI \n"), 100);
-	  XBEE_TransmitDouble(&huart7, MPU_Degerler.pitch);
-	  durum++;
-  }
-
-  else if(!strcmp(komut1,komut_STOP)) {
-	  OK_FLAG = 0;
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);
-	  motokontrol(ALL, dur, 0);
-  }
-
-  else if(!strcmp(komut1,komut_ILERI)) motokontrol(OnSag, ileri, komut2_int);
-
-  else if(!strcmp(komut1, komut_GERI)) motokontrol(OnSag, geri, komut2_int);
-
-  else if(!strcmp(komut1, komut_DON)){
-	  if(!strcmp(komut2, komut_SAG)){
-		  DIREC_SAG = ileri;
-		  DIREC_SOL = geri;
-	  }
-	  if(!strcmp(komut2, komut_SOL)){
-		  DIREC_SAG = geri;
-		  DIREC_SOL = ileri;
-	  }
-	  motokontrol(OnSol, DIREC_SOL, 50);
-	  motokontrol(OnSag, DIREC_SAG, 50);
-  }
-
-  else if(!strcmp(komut1,komut_IMU)){
-
-	  if(!strcmp(komut2,komut_IMU_ALL)) IMU_ALL_FLAG = 1;
-
-	  if(!strcmp(komut2,komut_IMU_ACC)) IMU_ACC_FLAG = 1;
-
-	  if(!strcmp(komut2,komut_IMU_GYRO)) IMU_GYRO_FLAG = 1;
-
-	  if(!strcmp(komut2,komut_IMU_ANG)) IMU_ANGLE_FLAG = 1;
-  }
-
-  else if(!strcmp(komut1,komut_OK)){
-	  OK_FLAG = 1;
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET);
-  }
-
-}
-
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-  /* Prevent unused argument(s) compilation warning */
   UNUSED(htim);
 
-  /* NOTE : This function should not be modified, when the callback is needed,
-            the HAL_TIM_PeriodElapsedCallback could be implemented in the user file
-   */
   HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_13);
   MPU_ALL(&MPU_Degerler);
+
   if(OK_FLAG){
 	if (IMU_ALL_FLAG) {
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Ax: ", strlen(" Ax: "), 100);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Ax);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Ay: ", strlen(" Ay: "), 100);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Ay);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Az: ", strlen(" Az: "), 100);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Az);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Gx: ", strlen(" Gx: "), 100);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Gx);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Gy: ", strlen(" Gy: "), 100);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Gy);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Gz: ", strlen(" Gz: "), 100);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Gz);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" pitch: ", strlen(" pitch: "), 100);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.pitch);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" roll: ", strlen(" roll: "), 100);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.roll);
 	}
 	if(IMU_ACC_FLAG){
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Ax: ", strlen(" Ax: "), 10);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Ax);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Ay: ", strlen(" Ay: "), 10);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Ay);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Az: ", strlen(" Az: "), 10);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Az);
 	}
 	if(IMU_GYRO_FLAG){
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Gx: ", strlen(" Gx: "), 10);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Gx);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Gy: ", strlen(" Gy: "), 10);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Gy);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" Gz: ", strlen(" Gz: "), 10);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.Gz);
 	}
 	if(IMU_ANGLE_FLAG){
-		HAL_UART_Transmit(&huart7, (uint8_t *)" pitch: ", strlen(" pitch: "), 10);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.pitch);
-		HAL_UART_Transmit(&huart7, (uint8_t *)" roll: ", strlen(" roll: "), 10);
 		XBEE_TransmitDouble(&huart7, MPU_Degerler.roll);
 	}
   }
+}
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	UNUSED(huart);
+
+	token = strtok(gelenData, " ");
+	strcpy(komut1, token);
+	token = strtok(NULL, " ");
+	strcpy(komut2, token);
+	komut2_int = atoi(komut2);
+
+	//CHECK FOR SYSYTEM RESET SIGN
+	for (int var = 0; var < 10; ++var) {
+		if(gelenData[var] == '*' ){
+			  HAL_UART_Transmit(&huart7, (uint8_t *)"ERR\n", strlen("ERR\n"), 100);
+			  NVIC_SystemReset();
+		}
+	}
+
+	if(!strcmp(komut1,komut_STOP)) {
+		  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);
+		  motokontrol(ALL, dur, 0);
+		  OK_FLAG = 0;
+	}
+	else if(!strcmp(komut1,komut_DUR)) {
+		  motokontrol(ALL, dur, 0);
+	}
+	else if(!strcmp(komut1, komut_OK)){
+		  OK_FLAG = 1;
+		  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET);
+	}
+	else if(!strcmp(komut1,komut_ILERI)) motokontrol(ALL, ileri, komut2_int); // ILERI komut2_int GUCUYLE
+
+	else if(!strcmp(komut1,komut_GERI)) motokontrol(ALL, geri, komut2_int); // GERI komut2_int GUCUYLE
+
+	else if(!strcmp(komut1,komut_RSAG)){
+		// SAG DON
+		  motokontrol(OnSol, ileri, komut2_int);
+		  motokontrol(OrtaSol, ileri, komut2_int);
+		  motokontrol(ArkaSol, ileri, komut2_int);
+		  motokontrol(OnSag, geri, komut2_int);
+		  motokontrol(OrtaSag, geri, komut2_int);
+		  motokontrol(ArkaSag, geri, komut2_int);
+	}
+	else if(!strcmp(komut1,komut_RSOL)){
+		//SOL DON
+		  motokontrol(OnSol, geri, komut2_int);
+		  motokontrol(OrtaSol, geri, komut2_int);
+		  motokontrol(ArkaSol, geri, komut2_int);
+		  motokontrol(OnSag, ileri, komut2_int);
+		  motokontrol(OrtaSag, ileri, komut2_int);
+		  motokontrol(ArkaSag, ileri, komut2_int);
+	}
+	else if(!strcmp(komut1,komut_ISOL)){
+		//ILERI SOL
+		  motokontrol(OnSol, ileri, (uint8_t)(komut2_int/2));
+		  motokontrol(OrtaSol, ileri, (uint8_t)(komut2_int/2));
+		  motokontrol(ArkaSol, ileri, (uint8_t)(komut2_int/2));
+		  motokontrol(OnSag, ileri, komut2_int);
+		  motokontrol(OrtaSag, ileri, komut2_int);
+		  motokontrol(ArkaSag, ileri, komut2_int);
+	}
+	else if(!strcmp(komut1,komut_ISAG)){
+		//ILERI SAG
+		  motokontrol(OnSol, ileri, komut2_int);
+		  motokontrol(OrtaSol, ileri, komut2_int);
+		  motokontrol(ArkaSol, ileri, komut2_int);
+		  motokontrol(OnSag, ileri, (uint8_t)(komut2_int/2));
+		  motokontrol(OrtaSag, ileri, (uint8_t)(komut2_int/2));
+		  motokontrol(ArkaSag, ileri, (uint8_t)(komut2_int/2));
+	}
+	else if(!strcmp(komut1,komut_GSOL)){
+		//GERI SOL
+		  motokontrol(OnSol, geri, (uint8_t)(komut2_int/2));
+		  motokontrol(OrtaSol, geri, (uint8_t)(komut2_int/2));
+		  motokontrol(ArkaSol, geri, (uint8_t)(komut2_int/2));
+		  motokontrol(OnSag, geri, komut2_int);
+		  motokontrol(OrtaSag, geri, komut2_int);
+		  motokontrol(ArkaSag, geri, komut2_int);
+	}
+	else if(!strcmp(komut1,komut_GSAG)){
+		//GERI SAG
+		  motokontrol(OnSol, geri, komut2_int);
+		  motokontrol(OrtaSol, geri, komut2_int);
+		  motokontrol(ArkaSol, geri, komut2_int);
+		  motokontrol(OnSag, geri, (uint8_t)(komut2_int/2));
+		  motokontrol(OrtaSag, geri, (uint8_t)(komut2_int/2));
+		  motokontrol(ArkaSag, geri, (uint8_t)(komut2_int/2));
+	}
+	else if(!strcmp(komut1,komut_IMU)){
+		  if(!strcmp(komut2,komut_IMU_ALL)) IMU_ALL_FLAG = 1;
+
+		  if(!strcmp(komut2,komut_IMU_ACC)) IMU_ACC_FLAG = 1;
+
+		  if(!strcmp(komut2,komut_IMU_GYRO)) IMU_GYRO_FLAG = 1;
+
+		  if(!strcmp(komut2,komut_IMU_ANG)) IMU_ANGLE_FLAG = 1;
+	}
+	else if(!strcmp(komut1,komut_RAPOR)){
+		  HAL_UART_Transmit(&huart7, (uint8_t *)"RPR       ", strlen("RPR       "), 100);
+	}
+	else if(!strcmp(gelenData,defaultData)){
+
+	}
+	else if(ERROR_COUNT < 5){
+		ERROR_COUNT++;
+	}
+	else if(ERROR_COUNT > 4){
+		HAL_UART_Transmit(&huart7, (uint8_t *)"ERR\n", strlen("ERR\n"), 100);
+		NVIC_SystemReset();
+	}
 }
 /* USER CODE END 0 */
 
@@ -265,121 +310,24 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_TIM1_Init();
   MX_DMA_Init();
-  MX_UART7_Init();
-  MX_TIM3_Init();
   MX_I2C1_Init();
+  MX_TIM1_Init();
+  MX_TIM3_Init();
   MX_TIM8_Init();
+  MX_UART7_Init();
   /* USER CODE BEGIN 2 */
-  HAL_Delay(1000);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
-
-  HAL_UART_Receive_DMA(&huart7, gelenData , 10);
-  HAL_UART_Transmit(&huart7, "BAGLANTI KURULDU! Baudrate: 115200\n", strlen("BAGLANTI KURULDU! Baudrate: 115200\n"), 100);
-  HAL_UART_Transmit(&huart7, (uint8_t *)"SIRALAMA: \n Ax \n Ay \n Az \n", strlen("SIRALAMA: \n Ax \n Ay \n Az \n"), 100);
-  HAL_UART_Transmit(&huart7, (uint8_t *)" Gx \n Gy \n Gz \n", strlen(" Gx \n Gy \n Gz \n"), 100);
-  HAL_UART_Transmit(&huart7, (uint8_t *)" pitch \n roll \n", strlen(" pitch \n roll \n"), 100);
-  HAL_Delay(100); //I2C ICIN DELAY (ARTIK GEREKSIZ AMA DURSUN YINE)
-
-  HAL_TIM_Base_Start_IT(&htim8);
-  MPU9255_Init(&hi2c1);
-
-
-/*
-  htim1.Instance -> CCR1 = 50 ;
-  htim1.Instance->CCR2 = 50;
-  htim1.Instance -> CCR3 = 50 ;
-  htim1.Instance->CCR4 = 50;
-  htim3.Instance -> CCR1 = 50 ;
-  htim3.Instance->CCR2 = 50;
-*/
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);
+  SRHEX_Init();
   /* USER CODE END 2 */
-
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if(DEMO_FLAG){
+		  DEMO(1);
+		  DEMO_FLAG = 0;
+	  }
 
-
-	if (durum && OK_FLAG) {
-
-		  motokontrol(ALL, dur, 0);
-		  HAL_Delay(500);
-		  motokontrol(OnSol, ileri, 100);
-		  HAL_Delay(500);
-		  motokontrol(ALL, dur, 0);
-		  HAL_Delay(500);
-		  motokontrol(OnSag, ileri, 100);
-		  HAL_Delay(500);
-		  motokontrol(ALL, dur, 0);
-		  HAL_Delay(500);
-		  motokontrol(OrtaSol, ileri, 100);
-		  HAL_Delay(500);
-		  motokontrol(ALL, dur, 0);
-		  HAL_Delay(500);
-		  motokontrol(OrtaSag, ileri, 100);
-		  HAL_Delay(500);
-		  motokontrol(ALL, dur, 0);
-		  HAL_Delay(500);
-		  motokontrol(ArkaSol, ileri, 100);
-		  HAL_Delay(500);
-		  motokontrol(ALL, dur, 0);
-		  HAL_Delay(500);
-		  motokontrol(ArkaSag, ileri, 100);
-		  HAL_Delay(500);
-		  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);
-
-		/*
-		HAL_GPIO_WritePin(GPIOF, GPIO_PIN_12, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOF, GPIO_PIN_11, GPIO_PIN_RESET);
-		HAL_Delay(500);
-		HAL_GPIO_WritePin(GPIOF, GPIO_PIN_12, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOF, GPIO_PIN_11, GPIO_PIN_RESET);
-		HAL_Delay(500);
-
-		HAL_GPIO_WritePin(GPIOF, GPIO_PIN_13, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, GPIO_PIN_RESET);
-		HAL_Delay(500);
-		HAL_GPIO_WritePin(GPIOF, GPIO_PIN_13, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, GPIO_PIN_RESET);
-		HAL_Delay(500);
-
-		HAL_GPIO_WritePin(GPIOG, GPIO_PIN_15, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
-		HAL_Delay(500);
-		HAL_GPIO_WritePin(GPIOG, GPIO_PIN_15, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
-		HAL_Delay(500);
-
-		HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_7, GPIO_PIN_RESET);
-		HAL_Delay(500);
-		HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_7, GPIO_PIN_RESET);
-		HAL_Delay(500);
-
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_10, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_RESET);
-		HAL_Delay(500);
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_10, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_RESET);
-		HAL_Delay(500);
-
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_15, GPIO_PIN_RESET);
-		HAL_Delay(500);
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_15, GPIO_PIN_RESET);
-		HAL_Delay(500);
-		*/
-	}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -399,18 +347,14 @@ void SystemClock_Config(void)
   /** Configure the main internal regulator output voltage
   */
   __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = 4;
-  RCC_OscInitStruct.PLL.PLLN = 168;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-  RCC_OscInitStruct.PLL.PLLQ = 3;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -419,12 +363,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
     Error_Handler();
   }
@@ -895,64 +839,12 @@ void motokontrol(motorlar motor_poz, yonler yon, uint8_t hiz){
 		}
 	}
 	else if(motor_poz == ALL){
-
 		motokontrol(OnSol, yon, hiz);
 		motokontrol(OnSag, yon, hiz);
 		motokontrol(OrtaSol, yon, hiz);
 		motokontrol(OrtaSag, yon, hiz);
 		motokontrol(ArkaSol, yon, hiz);
 		motokontrol(ArkaSag, yon, hiz);
-		/*
-		if(yon == ileri){
-
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_12, GPIO_PIN_SET); // AIN2
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_11, GPIO_PIN_RESET); // AIN1
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, GPIO_PIN_SET);
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_13, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
-			  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_15, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_7, GPIO_PIN_SET);
-			  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_10, GPIO_PIN_SET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_15, GPIO_PIN_SET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_RESET);
-
-		}
-		else if(yon == geri){
-
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_12, GPIO_PIN_RESET); // AIN2
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_11, GPIO_PIN_SET); // AIN1
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_13, GPIO_PIN_SET);
-			  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_15, GPIO_PIN_SET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_7, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1, GPIO_PIN_SET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_10, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_SET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_15, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_SET);
-
-		}
-		else{
-
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_12, GPIO_PIN_RESET); // AIN2
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_11, GPIO_PIN_RESET); // AIN1
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_13, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_15, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_7, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_10, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_8, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_15, GPIO_PIN_RESET);
-			  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_12, GPIO_PIN_RESET);
-
-		}
-	*/
-
 	}
 	else {
 		  // (FL)
@@ -1072,6 +964,77 @@ void XBEE_TransmitDouble(UART_HandleTypeDef *_UART, double deger){
 	 }
 
 }
+void SRHEX_Init(){
+	  HAL_Delay(100);
+
+	  //PWM TIMERLAR
+	  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+	  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+	  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+	  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+	  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+	  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+
+	  //INTERRUPT TIMER
+	  HAL_TIM_Base_Start_IT(&htim8);
+
+	  HAL_Delay(100);
+
+	  //XBEE INIT
+	  HAL_UART_Receive_DMA(&huart7, gelenData , 10);
+	  strcpy(defaultData , gelenData);
+	  HAL_UART_Transmit(&huart7, (uint8_t *)"BAGLANTI KURULDU! Baudrate: 115200\n", strlen("BAGLANTI KURULDU! Baudrate: 115200\n"), 100);
+	  HAL_UART_Transmit(&huart7, (uint8_t *)"SIRALAMA: \n Ax \n Ay \n Az \n", strlen("SIRALAMA: \n Ax \n Ay \n Az \n"), 100);
+	  HAL_UART_Transmit(&huart7, (uint8_t *)" Gx \n Gy \n Gz \n", strlen(" Gx \n Gy \n Gz \n"), 100);
+	  HAL_UART_Transmit(&huart7, (uint8_t *)" pitch \n roll\n", strlen(" pitch \n roll\n"), 100);
+
+	  HAL_Delay(100); //I2C ICIN DELAY (ARTIK GEREKSIZ AMA DURSUN YINE)
+
+	  //MPU INIT
+	  MPU9255_Init(&hi2c1);
+
+	  // MOTOR SURUCULER DEAKTIVE
+	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);
+
+	  HAL_Delay(100);
+	  HAL_UART_Transmit(&huart7, (uint8_t *)"RPR       ", strlen("RPR       "), 100);
+
+}
+
+void DEMO(uint8_t tekrar){
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_SET);
+	for (int var = 0; var < tekrar; ++var) {
+		  motokontrol(ALL, dur, 0);
+		  HAL_Delay(500);
+		  motokontrol(OnSol, ileri, 100);
+		  HAL_Delay(500);
+		  motokontrol(ALL, dur, 0);
+		  HAL_Delay(500);
+		  motokontrol(OnSag, ileri, 100);
+		  HAL_Delay(500);
+		  motokontrol(ALL, dur, 0);
+		  HAL_Delay(500);
+		  motokontrol(OrtaSol, ileri, 100);
+		  HAL_Delay(500);
+		  motokontrol(ALL, dur, 0);
+		  HAL_Delay(500);
+		  motokontrol(OrtaSag, ileri, 100);
+		  HAL_Delay(500);
+		  motokontrol(ALL, dur, 0);
+		  HAL_Delay(500);
+		  motokontrol(ArkaSol, ileri, 100);
+		  HAL_Delay(500);
+		  motokontrol(ALL, dur, 0);
+		  HAL_Delay(500);
+		  motokontrol(ArkaSag, ileri, 100);
+		  HAL_Delay(500);
+
+	}
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_5, GPIO_PIN_RESET);
+}
+
+
+
 /* USER CODE END 4 */
 
 /**
