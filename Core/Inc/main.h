@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32f4xx_hal.h"
+#include "stm32f1xx_hal.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -50,8 +50,6 @@ extern "C" {
 
 /* USER CODE END EM */
 
-void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
-
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -60,6 +58,44 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define ILERI_Pin GPIO_PIN_0
+#define ILERI_GPIO_Port GPIOA
+#define GERI_Pin GPIO_PIN_1
+#define GERI_GPIO_Port GPIOA
+#define SOL_Pin GPIO_PIN_2
+#define SOL_GPIO_Port GPIOA
+#define SAG_Pin GPIO_PIN_3
+#define SAG_GPIO_Port GPIOA
+#define STOP_Pin GPIO_PIN_4
+#define STOP_GPIO_Port GPIOA
+#define TEST_Pin GPIO_PIN_5
+#define TEST_GPIO_Port GPIOA
+#define A_Pin GPIO_PIN_0
+#define A_GPIO_Port GPIOB
+#define B_Pin GPIO_PIN_1
+#define B_GPIO_Port GPIOB
+#define LED1_Pin GPIO_PIN_10
+#define LED1_GPIO_Port GPIOB
+#define LED2_Pin GPIO_PIN_11
+#define LED2_GPIO_Port GPIOB
+#define D1_Pin GPIO_PIN_12
+#define D1_GPIO_Port GPIOB
+#define D2_Pin GPIO_PIN_13
+#define D2_GPIO_Port GPIOB
+#define D3_Pin GPIO_PIN_14
+#define D3_GPIO_Port GPIOB
+#define D4_Pin GPIO_PIN_15
+#define D4_GPIO_Port GPIOB
+#define D_Pin GPIO_PIN_3
+#define D_GPIO_Port GPIOB
+#define E_Pin GPIO_PIN_4
+#define E_GPIO_Port GPIOB
+#define F_Pin GPIO_PIN_5
+#define F_GPIO_Port GPIOB
+#define G_Pin GPIO_PIN_6
+#define G_GPIO_Port GPIOB
+#define C_Pin GPIO_PIN_7
+#define C_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
